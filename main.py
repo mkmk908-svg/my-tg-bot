@@ -1,62 +1,68 @@
-import time
-import http.client
-import json
-import ssl
+import asyncio
+import logging
+import os
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import CommandStart, Command
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
-# Твой рабочий токен
-TOKEN = "8943567222:AAEVUVR5QDY-DWhlP9erjQiJ4jjzSR28mD8"
+# Токен успешно добавлен!
+API_TOKEN = "8943567222:AAEVUVR5QDY-DWhlP9erjQiJ4jjzSR28mD8"
 
-def send_api_request(method, data=None):
-    context = ssl._create_unverified_context()
-    connection = http.client.HTTPSConnection("api.telegram.org", timeout=15, context=context)
-    path = f"/bot{TOKEN}/{method}"
+logging.basicConfig(level=logging.INFO)
+
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher()
+
+# Обработчик команды /start
+@dp.message(CommandStart())
+async def cmd_start(message: types.Message):
+    await message.answer(
+        f"Привет, {message.from_user.full_name}! Бот заряжен и готов.\n"
+        f"Введите команду /sud, чтобы отправить уведомление."
+    )
+
+# Обработчик команды /sud
+@dp.message(Command("sud"))
+async def send_sud_photo(message: types.Message):
+    # Картинку нужно назвать именно так и положить в папку с ботом
+    photo_path = "sud_document.jpg" 
+    
+    # Создаем кнопку для звонка (вместо ТЕЛЕФОН вставьте реальный номер, например +79991112233)
+    # Важно: префикс tel: обязателен, чтобы Telegram понял, что это звонок
+    inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📞 Сделать звонок и выяснить", url="tel:+79991112233")]
+    ])
+    
+    if os.path.exists(photo_path):
+        photo = FSInputFile(photo_path)
+        
+        # Отправляем ОДНО сообщение: фото, ваш текст и кнопку ниже
+        await message.answer_photo(
+            photo=photo, 
+            caption="⚠️ **Внимание!**\nКакой-то уебок обиделся и подал в суд!",
+            reply_markup=inline_kb,
+            parse_mode="Markdown"
+        )
+    else:
+        # Если картинку забыли положить, бот просто отправит текст с кнопкой
+        await message.answer(
+            "⚠️ **Внимание!**\nКакой-то уебок обиделся и подал в суд!\n\n*(Ошибка: файл 'sud_document.jpg' не найден в папке)*",
+            reply_markup=inline_kb,
+            parse_mode="Markdown"
+        )
+
+# Эхо-эффект для остальных сообщений
+@dp.message()
+async def echo_message(message: types.Message):
+    await message.answer(message.text)
+
+async def main():
+    print("Бот запущен на вашем токене...")
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == '__main__':
     try:
-        headers = {'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
-        if data:
-            body = json.dumps(data).encode('utf-8')
-            connection.request("POST", path, body=body, headers=headers)
-        else:
-            connection.request("GET", path, headers=headers)
-        response = connection.getresponse()
-        return json.loads(response.read().decode('utf-8'))
-    except Exception as e:
-        print(f"Ошибка запроса: {e}")
-        return None
-    finally:
-        connection.close()
-
-def main():
-    print("Бот слушает команды...")
-    offset = 0
-    
-    # Сбрасываем старые вебхуки, чтобы работал обычный опрос
-    send_api_request("deleteWebhook")
-    
-    while True:
-        try:
-            updates = send_api_request("getUpdates", {"offset": offset, "timeout": 20})
-            if updates and updates.get("result"):
-                for update in updates["result"]:
-                    offset = update["update_id"] + 1
-                    
-                    if "message" in update:
-                        msg = update["message"]
-                        chat_id = msg["chat"]["id"]
-                        text = msg.get("text", "").strip().lower()
-                        
-                        # Ловит /sud или /sud@юзернейм
-                        if text.startswith("/sud"):
-                            user = msg.get("from", {}).get("first_name", "Игрок")
-                            for _ in range(10):
-                                send_api_request("sendMessage", {
-                                    "chat_id": chat_id,
-                                    "text": f"⚖️ Игрок {user} подал в суд! Начните аудиозвонок, чтобы выяснить, что случилось!"
-                                })
-                                time.sleep(0.4)
-        except Exception as e:
-            print(f"Ошибка цикла: {e}")
-            time.sleep(3)
-        time.sleep(1)
-
-if __name__ == "__main__":
-    main()
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Бот остановлен.")
